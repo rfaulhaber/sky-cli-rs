@@ -163,6 +163,7 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
 
     let mut states: Vec<ApiState> = Vec::new();
 
+    // TODO implement custom deserializer
     for state in json_data.states {
         let mut item = ApiState::default();
         for i in 0..17 {
