@@ -17,7 +17,7 @@ struct ApiRequest {
 
 #[derive(Debug, Deserialize)]
 struct ApiResponse {
-    states: Vec<Vec<ApiResponseField>>,
+    states: Vec<Vec<Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,9 +32,9 @@ enum ApiResponseField {
 #[derive(Debug)]
 struct ApiState {
     icao24: String,
-    callsign: String,
+    callsign: Option<String>,
     origin_country: String,
-    time_position: Option<u64>,
+    time_position: Option<i64>,
     last_contact: u64,
     longitude: Option<f64>,
     latitude: Option<f64>,
@@ -48,6 +48,30 @@ struct ApiState {
     squawk: Option<String>,
     spi: bool,
     position_source: u8,
+}
+
+impl ApiState {
+    fn default() -> ApiState {
+        ApiState {
+            icao24: String::new(),
+            callsign: None,
+            origin_country: String::new(),
+            time_position: None,
+            last_contact: 0 as u64,
+            longitude: None,
+            latitude: None,
+            baro_altitude: None,
+            on_ground: false,
+            velocity: None,
+            true_track: None,
+            vertical_rate: None,
+            sensors: Vec::new(),
+            geo_altitude: 0.0,
+            squawk: None,
+            spi: false,
+            position_source: 0 as u8,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -125,9 +149,9 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
         Err(reason) => return Err(GetApiError::new(String::from("request failed"))),
     };
 
-    let states: Value = serde_json::from_str(resp_data.text().unwrap().as_str()).unwrap();
+    // let states: Value = serde_json::from_str(resp_data.text().unwrap().as_str()).unwrap();
 
-    let json_data: ApiResponse = match serde_json::from_value(states) {
+    let json_data: ApiResponse = match resp_data.json() {
         Ok(data) => data,
         Err(reason) => {
             println!("reason: {}", reason);
@@ -137,7 +161,28 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
 
     println!("states: {:?}", json_data);
 
-    // let states = json_data["states"];
+    let mut states: Vec<ApiState> = Vec::new();
+
+    for state in json_data.states {
+        let mut item = ApiState::default();
+        for i in 0..17 {
+            match i {
+                0 => item.icao24 = state[0].to_string(),
+                1 => item.callsign = Some(state[1].to_string()),
+                2 => item.origin_country = state[2].to_string(),
+                3 => {
+                    if !state[3].is_null() {
+                        item.time_position = Some(state[3].as_i64().unwrap());
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        states.push(item);
+    }
+
+    println!("{:?}", states);
 
     unimplemented!();
 
