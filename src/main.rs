@@ -44,7 +44,7 @@ struct ApiState {
     true_track: Option<f64>,
     vertical_rate: Option<f64>,
     sensors: Vec<u64>,
-    geo_altitude: f64,
+    geo_altitude: Option<f64>,
     squawk: Option<String>,
     spi: bool,
     position_source: u8,
@@ -66,7 +66,7 @@ impl ApiState {
             true_track: None,
             vertical_rate: None,
             sensors: Vec::new(),
-            geo_altitude: 0.0,
+            geo_altitude: None,
             squawk: None,
             spi: false,
             position_source: 0 as u8,
@@ -101,6 +101,8 @@ impl error::Error for GetApiError {
     }
 }
 
+type Coordinate = (f64, f64);
+
 fn main() {
     let app = App::new("sky-cli")
         .version("0.1")
@@ -123,11 +125,27 @@ fn main() {
                         .long("sort")
                         .help("sort field")
                         .takes_value(true),
-                ),
+                )
+                .arg(Arg::with_name("latitude").required(true))
+                .arg(Arg::with_name("longitude").required(true)),
         );
 
     if let Some(matches) = app.get_matches().subcommand_matches("nearest") {
-        let count_str = matches.value_of("count").unwrap_or("1");
+        let count: usize = match matches.value_of("count").unwrap_or("1").parse() {
+            Ok(val) => val,
+            Err(reason) => {
+                eprintln!("could not parse count argument: {}", reason);
+                process::exit(1);
+            }
+        };
+
+        // TODO actually verify that floats are parsed so as to prevent panic!
+        let latitude: f64 = matches.value_of_lossy("latitude").unwrap().parse().unwrap();
+        let longitude: f64 = matches
+            .value_of_lossy("longitude")
+            .unwrap()
+            .parse()
+            .unwrap();
 
         let api_result = match get_json_data() {
             Ok(resp) => resp,
@@ -137,7 +155,13 @@ fn main() {
             }
         };
 
-        println!("result: {:?}", api_result);
+        println!("lat: {}, long: {}", latitude, longitude);
+
+        let from: Coordinate = (latitude, longitude);
+
+        let closest_states: Vec<ApiState> = Vec::with_capacity(count);
+
+        // println!("result: {:?}", api_result);
     }
 }
 
@@ -146,10 +170,8 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
 
     let mut resp_data = match reqwest::get("https://opensky-network.org/api/states/all") {
         Ok(data) => data,
-        Err(reason) => return Err(GetApiError::new(String::from("request failed"))),
+        Err(_) => return Err(GetApiError::new(String::from("request failed"))),
     };
-
-    // let states: Value = serde_json::from_str(resp_data.text().unwrap().as_str()).unwrap();
 
     let json_data: ApiResponse = match resp_data.json() {
         Ok(data) => data,
@@ -159,23 +181,44 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
         }
     };
 
-    println!("states: {:?}", json_data);
-
     let mut states: Vec<ApiState> = Vec::new();
 
-    // TODO implement custom deserializer
+    // TODO implement custom deserializer?
     for state in json_data.states {
         let mut item = ApiState::default();
         for i in 0..17 {
+            let elem = &state[i];
             match i {
-                0 => item.icao24 = state[0].to_string(),
-                1 => item.callsign = Some(state[1].to_string()),
-                2 => item.origin_country = state[2].to_string(),
-                3 => {
-                    if !state[3].is_null() {
-                        item.time_position = Some(state[3].as_i64().unwrap());
+                0 => item.icao24 = elem.to_string(),
+                2 => {
+                    if !elem.is_null() {
+                        item.callsign = Some(String::from(elem.as_str().unwrap()));
                     }
                 }
+                3 => {
+                    if !elem.is_null() {
+                        item.time_position = Some(elem.as_i64().unwrap());
+                    }
+                }
+                4 => item.last_contact = elem.as_u64().unwrap(),
+                5 => item.longitude = elem.as_f64(),
+                6 => item.longitude = elem.as_f64(),
+                7 => item.baro_altitude = elem.as_f64(),
+                8 => item.on_ground = elem.as_bool().unwrap(),
+                9 => item.velocity = elem.as_f64(),
+                10 => item.true_track = elem.as_f64(),
+                11 => item.vertical_rate = elem.as_f64(),
+                // 12 => item.sensors = elem.as_array().unwrap(),
+                13 => item.geo_altitude = elem.as_f64(),
+                14 => {
+                    if !elem.is_null() {
+                        item.squawk = Some(String::from(elem.as_str().unwrap()));
+                    }
+                }
+                15 => {
+                    item.spi = elem.as_bool().unwrap();
+                }
+                16 => item.position_source = elem.as_u64().unwrap() as u8,
                 _ => (),
             }
         }
@@ -183,17 +226,9 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
         states.push(item);
     }
 
-    println!("{:?}", states);
+    Ok(states)
+}
 
+fn dist(from: Coordinate, to: Coordinate) -> f64 {
     unimplemented!();
-
-    // let responses: Vec<ApiResponse> = match serde_json::from_value(states) {
-    //     Ok(data) => data,
-    //     Err(reason) => {
-    //         println!("reason: {}", reason);
-    //         return Err(GetApiError::new(String::from("value parse failed")));
-    //     }
-    // };
-
-    // Ok(responses)
 }
