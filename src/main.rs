@@ -4,6 +4,7 @@ extern crate serde;
 use clap::{App, Arg, SubCommand};
 use serde::Deserialize;
 use serde_json::Value;
+use std::cmp::Ordering;
 use std::error;
 use std::fmt;
 use std::process;
@@ -29,7 +30,7 @@ enum ApiResponseField {
     Ints(Vec<u64>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ApiState {
     icao24: String,
     callsign: Option<String>,
@@ -72,6 +73,16 @@ impl ApiState {
             position_source: 0 as u8,
         }
     }
+
+    fn dist_from(&self, from: Coordinate) -> f64 {
+        if self.latitude == None || self.longitude == None {
+            return std::f64::MAX;
+        }
+
+        let here = Coordinate::new(self.latitude.unwrap(), self.longitude.unwrap());
+
+        here.geo_dist(Coordinate::new(from.latitude, from.longitude))
+    }
 }
 
 #[derive(Debug)]
@@ -101,7 +112,32 @@ impl error::Error for GetApiError {
     }
 }
 
-type Coordinate = (f64, f64);
+#[derive(Debug, Copy, Clone)]
+struct Coordinate {
+    latitude: f64,
+    longitude: f64,
+}
+
+impl Coordinate {
+    fn new(latitude: f64, longitude: f64) -> Coordinate {
+        Coordinate {
+            latitude,
+            longitude,
+        }
+    }
+
+    fn geo_dist(self, to: Coordinate) -> f64 {
+        let earth_radius = f64::from(6371);
+
+        let dlong = (self.longitude - to.longitude).abs();
+
+        let delta = ((self.latitude.sin() * to.latitude.sin())
+            + (self.longitude.cos() * to.longitude.cos() * dlong.cos()))
+        .acos();
+
+        earth_radius * delta
+    }
+}
 
 fn main() {
     let app = App::new("sky-cli")
@@ -147,7 +183,7 @@ fn main() {
             .parse()
             .unwrap();
 
-        let api_result = match get_json_data() {
+        let api_result: Vec<ApiState> = match get_json_data() {
             Ok(resp) => resp,
             Err(reason) => {
                 eprintln!("get json data failed: {}", reason);
@@ -155,13 +191,53 @@ fn main() {
             }
         };
 
-        println!("lat: {}, long: {}", latitude, longitude);
+        println!("results: {}", api_result.len());
 
-        let from: Coordinate = (latitude, longitude);
+        let origin = Coordinate::new(latitude, longitude);
 
-        let closest_states: Vec<ApiState> = Vec::with_capacity(count);
+        // TODO make safe, implmenet ordering for Coordinate?
+        let filtered_states: Vec<ApiState> = api_result
+            .clone()
+            .into_iter()
+            .filter(|state| state.latitude != None && state.longitude != None)
+            .collect();
 
-        // println!("result: {:?}", api_result);
+        // TODO fix
+        let mut sorted_states = filtered_states.clone();
+        sorted_states.sort_by(|a, b| {
+            if a.latitude == None
+                || a.longitude == None
+                || b.latitude == None
+                || b.longitude == None
+            {
+                return Ordering::Greater;
+            }
+
+            let adist = origin.geo_dist(Coordinate::new(a.latitude.unwrap(), a.longitude.unwrap()));
+            let bdist = origin.geo_dist(Coordinate::new(b.latitude.unwrap(), b.longitude.unwrap()));
+
+            if adist < bdist {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        });
+
+        let distances: Vec<f64> = sorted_states
+            .clone()
+            .into_iter()
+            .map(|state| state.dist_from(origin))
+            .collect();
+
+        println!("distances: {:?}", distances);
+
+        let nearests = &sorted_states[0..count];
+
+        for state in nearests {
+            println!("distance : {}", state.dist_from(origin));
+            println!("callsign: {}", state.callsign.clone().unwrap());
+            println!("{}, {}", state.latitude.unwrap(), state.longitude.unwrap());
+        }
     }
 }
 
@@ -190,11 +266,12 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
             let elem = &state[i];
             match i {
                 0 => item.icao24 = elem.to_string(),
-                2 => {
+                1 => {
                     if !elem.is_null() {
                         item.callsign = Some(String::from(elem.as_str().unwrap()));
                     }
                 }
+                2 => item.origin_country = String::from(elem.as_str().unwrap()),
                 3 => {
                     if !elem.is_null() {
                         item.time_position = Some(elem.as_i64().unwrap());
@@ -202,7 +279,7 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
                 }
                 4 => item.last_contact = elem.as_u64().unwrap(),
                 5 => item.longitude = elem.as_f64(),
-                6 => item.longitude = elem.as_f64(),
+                6 => item.latitude = elem.as_f64(),
                 7 => item.baro_altitude = elem.as_f64(),
                 8 => item.on_ground = elem.as_bool().unwrap(),
                 9 => item.velocity = elem.as_f64(),
@@ -227,8 +304,4 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
     }
 
     Ok(states)
-}
-
-fn dist(from: Coordinate, to: Coordinate) -> f64 {
-    unimplemented!();
 }
