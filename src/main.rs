@@ -124,13 +124,23 @@ impl Coordinate {
     fn geo_dist(self, to: Coordinate) -> f64 {
         let earth_radius = f64::from(6371);
 
-        let dlong = (self.longitude - to.longitude).abs();
+        let self_lat_rad = Coordinate::to_rad(self.latitude);
+        let self_long_rad = Coordinate::to_rad(self.longitude);
 
-        let delta = ((self.latitude.sin() * to.latitude.sin())
-            + (self.longitude.cos() * to.longitude.cos() * dlong.cos()))
+        let to_lat_rad = Coordinate::to_rad(to.latitude);
+        let to_long_rad = Coordinate::to_rad(to.longitude);
+
+        let dlong = (self_long_rad - to_long_rad).abs();
+
+        let delta = ((self_lat_rad.sin() * to_lat_rad.sin())
+            + (self_lat_rad.cos() * to_lat_rad.cos() * dlong.cos()))
         .acos();
 
         earth_radius * delta
+    }
+
+    fn to_rad(v: f64) -> f64 {
+        v * std::f64::consts::PI / 180.0
     }
 }
 
@@ -159,23 +169,16 @@ fn main() {
                 )
                 .arg(
                     Arg::with_name("latitude")
+                        .allow_hyphen_values(true)
                         .required(true)
-                        .value_name("FLOAT")
-                        .number_of_values(1)
-                        .index(1)
                         .takes_value(true)
-                        .help("latitude")
-                        .allow_hyphen_values(true),
+                        .help("latitude"),
                 )
                 .arg(
                     Arg::with_name("longitude")
+                        .allow_hyphen_values(true)
                         .required(true)
-                        .value_name("FLOAT")
-                        .takes_value(true)
-                        .index(2)
-                        .number_of_values(1)
-                        .help("longitude")
-                        .allow_hyphen_values(true),
+                        .help("longitude"),
                 ),
         );
 
