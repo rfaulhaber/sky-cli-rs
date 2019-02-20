@@ -238,7 +238,15 @@ fn main() {
             .filter(|state_tup| !state_tup.1.is_nan())
             .collect();
 
-        let nearests = &distances[0..count];
+        let print_count: usize;
+
+        if count > distances.len() {
+            print_count = distances.len();
+        } else {
+            print_count = count;
+        }
+
+        let nearests = &distances[..print_count];
 
         println!(
             "{0: <13} | {1: <13} | {2: <13} | {3: <13} | {4: <13} | {5: <13} | {6: <13}",
