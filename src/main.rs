@@ -76,6 +76,7 @@ impl ApiState {
 
         let here = Coordinate::new(self.latitude.unwrap(), self.longitude.unwrap());
 
+        // TODO correct to ensure no overflow
         here.geo_dist(Coordinate::new(from.latitude, from.longitude))
     }
 }
@@ -247,10 +248,9 @@ fn main() {
         for state_tup in nearests {
             let state = state_tup.0.clone();
             let dist = state_tup.1;
-            // print!("{0: <10.8}", dist);
 
             println!(
-                "{0: <13.10} | {1: <13} | {2: <13} | {3: <13} | {4: <13} | {5: <13} | {6: <13}",
+                "{0: <13.5} | {1: <13} | {2: <13} | {3: <13} | {4: <13} | {5: <13} | {6: <13}",
                 dist,
                 match state.callsign {
                     Some(callsign) => callsign,
