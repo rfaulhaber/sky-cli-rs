@@ -124,11 +124,11 @@ impl Coordinate {
     fn geo_dist(self, to: Coordinate) -> f64 {
         let earth_radius = f64::from(6371);
 
-        let self_lat_rad = Coordinate::to_rad(self.latitude);
-        let self_long_rad = Coordinate::to_rad(self.longitude);
+        let self_lat_rad = Coordinate::deg_to_rad(self.latitude);
+        let self_long_rad = Coordinate::deg_to_rad(self.longitude);
 
-        let to_lat_rad = Coordinate::to_rad(to.latitude);
-        let to_long_rad = Coordinate::to_rad(to.longitude);
+        let to_lat_rad = Coordinate::deg_to_rad(to.latitude);
+        let to_long_rad = Coordinate::deg_to_rad(to.longitude);
 
         let dlong = (self_long_rad - to_long_rad).abs();
 
@@ -139,7 +139,7 @@ impl Coordinate {
         earth_radius * delta
     }
 
-    fn to_rad(v: f64) -> f64 {
+    fn deg_to_rad(v: f64) -> f64 {
         v * std::f64::consts::PI / 180.0
     }
 }
@@ -247,7 +247,7 @@ fn main() {
         let nearests = &distances[0..count];
 
         for state_tup in nearests {
-            print!("\n");
+            println!();
             let state = state_tup.0.clone();
             let dist = state_tup.1;
             println!("distance : {}", dist);
@@ -270,7 +270,7 @@ fn main() {
 
             println!("origin country: {}", state.origin_country);
             println!("ICAO24 ID: {}", state.icao24);
-            print!("\n");
+            println!();
         }
     }
 }
@@ -296,9 +296,9 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
     // TODO implement custom deserializer?
     for state in json_data.states {
         let mut item = ApiState::default();
-        // bad and stupid
-        for i in 0..17 {
-            let elem = &state[i];
+        // thank you clippy for this next line
+        // absurd that I have to do this though!
+        for (i, elem) in state.iter().enumerate().take(17) {
             match i {
                 0 => item.icao24 = elem.to_string(),
                 1 => {
