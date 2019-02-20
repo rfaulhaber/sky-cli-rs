@@ -161,13 +161,6 @@ fn main() {
                         .takes_value(true),
                 )
                 .arg(
-                    Arg::with_name("sort")
-                        .short("s")
-                        .long("sort")
-                        .help("sort field")
-                        .takes_value(true),
-                )
-                .arg(
                     Arg::with_name("latitude")
                         .allow_hyphen_values(true)
                         .required(true)
@@ -246,31 +239,32 @@ fn main() {
 
         let nearests = &distances[0..count];
 
+        println!(
+            "{0: <13} | {1: <13} | {2: <13} | {3: <13} | {4: <13} | {5: <13} | {6: <13}",
+            "distance", "callsign", "latitude", "longitude", "altitude", "origin", "ICAO24"
+        );
+
         for state_tup in nearests {
-            println!();
             let state = state_tup.0.clone();
             let dist = state_tup.1;
-            println!("distance : {}", dist);
-
-            match state.callsign {
-                Some(callsign) => println!("callsign: {}", callsign),
-                None => println!("no callsign provided"),
-            }
+            // print!("{0: <10.8}", dist);
 
             println!(
-                "latitude / longitude: {}, {}",
+                "{0: <13.10} | {1: <13} | {2: <13} | {3: <13} | {4: <13} | {5: <13} | {6: <13}",
+                dist,
+                match state.callsign {
+                    Some(callsign) => callsign,
+                    None => String::from("null"),
+                },
                 state.latitude.unwrap(),
-                state.longitude.unwrap()
+                state.longitude.unwrap(),
+                match state.geo_altitude {
+                    Some(alt) => alt.to_string(),
+                    None => String::from("null"),
+                },
+                state.origin_country,
+                state.icao24
             );
-
-            match state.geo_altitude {
-                Some(alt) => println!("altitude: {}", alt),
-                None => println!("no altitude provided"),
-            }
-
-            println!("origin country: {}", state.origin_country);
-            println!("ICAO24 ID: {}", state.icao24);
-            println!();
         }
     }
 }
