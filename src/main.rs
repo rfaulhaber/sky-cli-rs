@@ -9,12 +9,7 @@ use std::error;
 use std::fmt;
 use std::process;
 
-struct ApiRequest {
-    lamin: f64,
-    lomin: f64,
-    lamax: f64,
-    lomax: f64,
-}
+// TODO break into module(s)
 
 #[derive(Debug, Deserialize)]
 struct ApiResponse {
@@ -162,8 +157,26 @@ fn main() {
                         .help("sort field")
                         .takes_value(true),
                 )
-                .arg(Arg::with_name("latitude").required(true))
-                .arg(Arg::with_name("longitude").required(true)),
+                .arg(
+                    Arg::with_name("latitude")
+                        .required(true)
+                        .value_name("FLOAT")
+                        .number_of_values(1)
+                        .index(1)
+                        .takes_value(true)
+                        .help("latitude")
+                        .allow_hyphen_values(true),
+                )
+                .arg(
+                    Arg::with_name("longitude")
+                        .required(true)
+                        .value_name("FLOAT")
+                        .takes_value(true)
+                        .index(2)
+                        .number_of_values(1)
+                        .help("longitude")
+                        .allow_hyphen_values(true),
+                ),
         );
 
     if let Some(matches) = app.get_matches().subcommand_matches("nearest") {
@@ -183,6 +196,8 @@ fn main() {
             .parse()
             .unwrap();
 
+        println!("[DEBUG]: getting JSON data from API");
+
         let api_result: Vec<ApiState> = match get_json_data() {
             Ok(resp) => resp,
             Err(reason) => {
@@ -191,7 +206,7 @@ fn main() {
             }
         };
 
-        println!("results: {}", api_result.len());
+        println!("[DEBUG]: retreived results: {}", api_result.len());
 
         let origin = Coordinate::new(latitude, longitude);
 
@@ -205,38 +220,54 @@ fn main() {
         // TODO fix
         let mut sorted_states = filtered_states.clone();
         sorted_states.sort_by(|a, b| {
-            if a.latitude == None
-                || a.longitude == None
-                || b.latitude == None
-                || b.longitude == None
-            {
-                return Ordering::Greater;
-            }
-
             let adist = origin.geo_dist(Coordinate::new(a.latitude.unwrap(), a.longitude.unwrap()));
             let bdist = origin.geo_dist(Coordinate::new(b.latitude.unwrap(), b.longitude.unwrap()));
 
-            if adist < bdist {
+            if adist.is_nan() {
+                Ordering::Less
+            } else if bdist.is_nan() {
+                Ordering::Greater
+            } else if adist < bdist {
                 Ordering::Less
             } else {
                 Ordering::Greater
             }
         });
 
-        let distances: Vec<f64> = sorted_states
+        let distances: Vec<(ApiState, f64)> = sorted_states
             .clone()
             .into_iter()
-            .map(|state| state.dist_from(origin))
+            .map(|state| (state.clone(), state.dist_from(origin)))
+            .filter(|state_tup| !state_tup.1.is_nan())
             .collect();
 
-        println!("distances: {:?}", distances);
+        let nearests = &distances[0..count];
 
-        let nearests = &sorted_states[0..count];
+        for state_tup in nearests {
+            print!("\n");
+            let state = state_tup.0.clone();
+            let dist = state_tup.1;
+            println!("distance : {}", dist);
 
-        for state in nearests {
-            println!("distance : {}", state.dist_from(origin));
-            println!("callsign: {}", state.callsign.clone().unwrap());
-            println!("{}, {}", state.latitude.unwrap(), state.longitude.unwrap());
+            match state.callsign {
+                Some(callsign) => println!("callsign: {}", callsign),
+                None => println!("no callsign provided"),
+            }
+
+            println!(
+                "latitude / longitude: {}, {}",
+                state.latitude.unwrap(),
+                state.longitude.unwrap()
+            );
+
+            match state.geo_altitude {
+                Some(alt) => println!("altitude: {}", alt),
+                None => println!("no altitude provided"),
+            }
+
+            println!("origin country: {}", state.origin_country);
+            println!("ICAO24 ID: {}", state.icao24);
+            print!("\n");
         }
     }
 }
@@ -262,6 +293,7 @@ fn get_json_data() -> Result<Vec<ApiState>, GetApiError> {
     // TODO implement custom deserializer?
     for state in json_data.states {
         let mut item = ApiState::default();
+        // bad and stupid
         for i in 0..17 {
             let elem = &state[i];
             match i {
