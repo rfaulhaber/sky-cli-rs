@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::error;
 use std::fmt;
 use std::process;
+use std::time::Instant;
 
 // TODO break into module(s)
 
@@ -150,6 +151,11 @@ fn main() {
         .version("0.1")
         .author("Ryan Faulhaber <faulhaberryan@gmail.com>")
         .about("calls Open Sky API")
+        .arg(
+            Arg::with_name("verbose")
+                .short("v")
+                .help("prints debug logs"),
+        )
         .subcommand(
             SubCommand::with_name("nearest")
                 .about("finds nearest plane(s)")
@@ -165,19 +171,26 @@ fn main() {
                     Arg::with_name("latitude")
                         .allow_hyphen_values(true)
                         .required(true)
+                        .index(1)
                         .takes_value(true)
                         .help("latitude"),
                 )
                 .arg(
                     Arg::with_name("longitude")
                         .allow_hyphen_values(true)
+                        .index(2)
                         .required(true)
+                        .takes_value(true)
                         .help("longitude"),
                 ),
         );
 
-    if let Some(matches) = app.get_matches().subcommand_matches("nearest") {
-        let count: usize = match matches.value_of("count").unwrap_or("1").parse() {
+    let matches = app.get_matches();
+
+    let verbose = matches.is_present("verbose");
+
+    if let Some(nearest_cmd) = matches.subcommand_matches("nearest") {
+        let count: usize = match nearest_cmd.value_of("count").unwrap_or("1").parse() {
             Ok(val) => val,
             Err(reason) => {
                 eprintln!("could not parse count argument: {}", reason);
@@ -185,15 +198,39 @@ fn main() {
             }
         };
 
-        // TODO actually verify that floats are parsed so as to prevent panic!
-        let latitude: f64 = matches.value_of_lossy("latitude").unwrap().parse().unwrap();
-        let longitude: f64 = matches
-            .value_of_lossy("longitude")
-            .unwrap()
-            .parse()
-            .unwrap();
+        let latitude: f64 = match nearest_cmd.value_of("latitude") {
+            Some(val) => match val.parse() {
+                Ok(val) => val,
+                Err(reason) => {
+                    eprintln!("could not parse value: {}", reason);
+                    process::exit(1);
+                }
+            },
+            None => {
+                eprintln!("No latitude argument found");
+                process::exit(1);
+            }
+        };
 
-        println!("[DEBUG]: getting JSON data from API");
+        let longitude: f64 = match nearest_cmd.value_of("longitude") {
+            Some(val) => match val.parse() {
+                Ok(val) => val,
+                Err(reason) => {
+                    eprintln!("could not parse value: {}", reason);
+                    process::exit(1);
+                }
+            },
+            None => {
+                eprintln!("No latitude argument found");
+                process::exit(1);
+            }
+        };
+
+        if verbose {
+            println!("[DEBUG]: getting JSON data from API");
+        }
+
+        let query_start = Instant::now();
 
         let api_result: Vec<ApiState> = match get_json_data() {
             Ok(resp) => resp,
@@ -203,7 +240,15 @@ fn main() {
             }
         };
 
-        println!("[DEBUG]: retreived results: {}", api_result.len());
+        if verbose {
+            let elapsed = query_start.elapsed();
+            println!(
+                "[DEBUG]: retreived results: {} in {}.{}s",
+                api_result.len(),
+                elapsed.as_secs(),
+                elapsed.subsec_millis() // is this accurate lol
+            );
+        }
 
         let origin = Coordinate::new(latitude, longitude);
 
